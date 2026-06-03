@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Match {
+  id            Int       @id @default(autoincrement())
+  fixtureId     String    @unique
+  homeTeam      String
+  awayTeam      String
+  league        String
+  country       String
+  matchDate     DateTime
+  status        String    @default("NS")
+  homeGoals     Int?
+  awayGoals     Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  odds          Odd[]
+  predictions   Prediction[]
+  alerts        Alert[]
+}
+
+model Odd {
+  id         Int      @id @default(autoincrement())
+  matchId    Int
+  bookmaker  String
+  market     String
+  outcome    String
+  value      Float
+  createdAt  DateTime @default(now())
+
+  match      Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+}
+
+model Prediction {
+  id                 Int      @id @default(autoincrement())
+  matchId            Int
+  market             String
+  outcome            String
+  trueProbability    Float
+  impliedProbability Float
+  expectedValue      Float
+  bestOdd            Float
+  bookmaker          String
+  confidence         String
+  aiAnalysis         String?
+  aiModel            String?
+  createdAt          DateTime @default(now())
+
+  match              Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  alerts             Alert[]
+}
+
+model Alert {
+  id           Int      @id @default(autoincrement())
+  matchId      Int
+  predictionId Int
+  sentAt       DateTime @default(now())
+  telegramMsgId Int?
+  chatId       String
+
+  match        Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  prediction   Prediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+}
+
+model TeamStats {
+  id              Int      @id @default(autoincrement())
+  teamId          Int
+  teamName        String
+  leagueId        Int
+  season          String
+  played          Int      @default(0)
+  wins            Int      @default(0)
+  draws           Int      @default(0)
+  losses          Int      @default(0)
+  goalsFor        Int      @default(0)
+  goalsAgainst    Int      @default(0)
+  avgGoalsFor     Float    @default(0)
+  avgGoalsAgainst Float    @default(0)
+  formString      String   @default("")
+  updatedAt       DateTime @updatedAt
+
+  @@unique([teamId, leagueId, season])
+}
+
+model Config {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  value String
+}
