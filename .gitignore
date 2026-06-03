@@ -6,4 +6,5 @@ dist/
 logs/
 coverage/
 /generated/
-public/
+public/*
+!public/.gitkeep
