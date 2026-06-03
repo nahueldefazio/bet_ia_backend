@@ -16,26 +16,29 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     private readonly predictions: PredictionsService,
     private readonly prisma: PrismaService,
   ) {
-    const token = this.config.getOrThrow<string>('TELEGRAM_BOT_TOKEN');
+    const token = this.config.get<string>('TELEGRAM_BOT_TOKEN');
     const allowed = this.config.get<string>('TELEGRAM_ALLOWED_CHAT_IDS', '');
     this.allowedChatIds = new Set(allowed.split(',').map((s) => s.trim()).filter(Boolean));
-    this.bot = new Telegraf(token);
+    if (token) {
+      this.bot = new Telegraf(token);
+    }
   }
 
   async onModuleInit() {
+    if (!this.bot) {
+      this.logger.warn('TELEGRAM_BOT_TOKEN not set — bot disabled');
+      return;
+    }
     this.registerCommands();
-
     this.predictions.onAlert((alerts) => this.broadcastAlerts(alerts));
-
     this.bot.launch().catch((err) => {
       this.logger.error(`Telegram bot launch failed: ${err.message}`);
     });
-
     this.logger.log('Telegram bot started');
   }
 
   async onModuleDestroy() {
-    this.bot.stop('SIGTERM');
+    this.bot?.stop('SIGTERM');
   }
 
   private registerCommands() {
@@ -204,6 +207,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   async broadcastAlerts(alerts: ValueBetAlert[]) {
+    if (!this.bot) return;
     if (!this.allowedChatIds.size) {
       this.logger.warn('No chat IDs configured — skipping broadcast');
       return;
@@ -258,6 +262,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   async sendMessage(chatId: string, text: string): Promise<void> {
+    if (!this.bot) return;
     await this.bot.telegram.sendMessage(chatId, text, { parse_mode: 'Markdown' });
   }
 }
