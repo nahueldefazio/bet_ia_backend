@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -49,7 +49,7 @@ model Prediction {
   bestOdd            Float
   bookmaker          String
   confidence         String
-  aiAnalysis         String?
+  aiAnalysis         String?  @db.Text
   aiModel            String?
   createdAt          DateTime @default(now())
 
@@ -92,5 +92,5 @@ model TeamStats {
 model Config {
   id    Int    @id @default(autoincrement())
   key   String @unique
-  value String
+  value String @db.Text
 }
