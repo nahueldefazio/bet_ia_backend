@@ -21,7 +21,7 @@ export class SportsService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    this.apiKey = this.config.getOrThrow('ODDS_API_KEY');
+    this.apiKey = this.config.get('ODDS_API_KEY', '');
     this.http = axios.create({
       baseURL: 'https://api.the-odds-api.com',
       timeout: 15000,
@@ -34,6 +34,10 @@ export class SportsService {
   }
 
   async fetchUpcomingFixtures(): Promise<void> {
+    if (!this.apiKey) {
+      this.logger.warn('ODDS_API_KEY not set — skipping fixtures fetch');
+      return;
+    }
     const now = new Date();
     const in10days = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
 
