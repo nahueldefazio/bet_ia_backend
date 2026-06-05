@@ -6,6 +6,7 @@ import { SportsModule } from './sports/sports.module';
 import { PredictionsModule } from './predictions/predictions.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     PredictionsModule,
     TelegramModule,
     DashboardModule,
+    AdminModule,
   ],
 })
 export class AppModule {}
