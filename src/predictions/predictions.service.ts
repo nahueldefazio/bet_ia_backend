@@ -70,6 +70,8 @@ export class PredictionsService {
   async analyzeMatch(match: MatchWithOddsAndPredictions): Promise<Prediction[]> {
     if (!match.odds.length) return [];
 
+    await this.prisma.prediction.deleteMany({ where: { matchId: match.id } });
+
     const markets = this.groupOddsByMarket(match.odds);
     const newPredictions: Prediction[] = [];
 
@@ -122,27 +124,21 @@ export class PredictionsService {
     const confidence = confidenceLevel(ev, trueProbability);
     if (!this.meetsMinConfidence(confidence)) return null;
 
-    const predData = {
-      matchId: match.id,
-      market,
-      outcome,
-      trueProbability,
-      impliedProbability: implied,
-      expectedValue: ev,
-      bestOdd: best.value,
-      bookmaker: best.bookmaker,
-      confidence,
-      aiAnalysis: null,
-      aiModel: null,
-    };
-
-    const existing = await this.prisma.prediction.findFirst({
-      where: { matchId: match.id, market, outcome },
+    return this.prisma.prediction.create({
+      data: {
+        matchId: match.id,
+        market,
+        outcome,
+        trueProbability,
+        impliedProbability: implied,
+        expectedValue: ev,
+        bestOdd: best.value,
+        bookmaker: best.bookmaker,
+        confidence,
+        aiAnalysis: null,
+        aiModel: null,
+      },
     });
-
-    return existing
-      ? this.prisma.prediction.update({ where: { id: existing.id }, data: predData })
-      : this.prisma.prediction.create({ data: predData });
   }
 
   async analyzeOnDemand(predictionId: number) {
