@@ -15,8 +15,8 @@ export interface MatchContext {
   expectedValue: number;
   homeForm: string;
   awayForm: string;
-  homeAvgGoals: number;
-  awayAvgGoals: number;
+  homeAvgGoals: number | null;
+  awayAvgGoals: number | null;
 }
 
 export interface AiAnalysisResult {
@@ -74,8 +74,8 @@ Probabilidad de nuestro modelo: ${(ctx.trueProbability * 100).toFixed(1)}%
 Valor Esperado (EV): ${(ctx.expectedValue * 100).toFixed(2)}%
 
 Stats de equipos:
-- ${ctx.homeTeam}: Forma ${ctx.homeForm}, Promedio ${ctx.homeAvgGoals.toFixed(2)} goles/partido
-- ${ctx.awayTeam}: Forma ${ctx.awayForm}, Promedio ${ctx.awayAvgGoals.toFixed(2)} goles/partido
+- ${ctx.homeTeam}: Forma ${ctx.homeForm}${ctx.homeAvgGoals == null ? '' : `, Promedio ${ctx.homeAvgGoals.toFixed(2)} goles/partido`}
+- ${ctx.awayTeam}: Forma ${ctx.awayForm}${ctx.awayAvgGoals == null ? '' : `, Promedio ${ctx.awayAvgGoals.toFixed(2)} goles/partido`}
 
 Tu tarea:
 1. Validá si esta es una apuesta de valor genuina basándote en la evidencia estadística

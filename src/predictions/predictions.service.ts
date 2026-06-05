@@ -8,7 +8,6 @@ import {
   calcExpectedValue,
   impliedProbability,
   devig,
-  poissonMatchProbabilities,
   confidenceLevel,
 } from './ev-calculator';
 import { Match, Odd, Prediction } from '@prisma/client';
@@ -23,10 +22,6 @@ export interface ValueBetAlert {
   predictions: Prediction[];
 }
 
-const POISSON_HOME_AVG = 1.4;
-const POISSON_HOME_CONCEDED = 1.2;
-const POISSON_AWAY_AVG = 1.1;
-const POISSON_AWAY_CONCEDED = 1.3;
 
 @Injectable()
 export class PredictionsService {
@@ -75,37 +70,36 @@ export class PredictionsService {
   async analyzeMatch(match: MatchWithOddsAndPredictions): Promise<Prediction[]> {
     if (!match.odds.length) return [];
 
-    const probs = poissonMatchProbabilities(
-      POISSON_HOME_AVG,
-      POISSON_HOME_CONCEDED,
-      POISSON_AWAY_AVG,
-      POISSON_AWAY_CONCEDED,
-    );
-    const probabilityMap: Record<string, number> = {
-      Home: probs.home,
-      Draw: probs.draw,
-      Away: probs.away,
-      Yes: probs.btts,
-      No: 1 - probs.btts,
-      OVER_2_5: probs.over25,
-      UNDER_2_5: 1 - probs.over25,
-    };
-
     const markets = this.groupOddsByMarket(match.odds);
     const newPredictions: Prediction[] = [];
 
     for (const [market, odds] of Object.entries(markets)) {
+      // Group all bookmaker odds by outcome
+      const byOutcome: Record<string, number[]> = {};
+      for (const o of odds) {
+        if (!byOutcome[o.outcome]) byOutcome[o.outcome] = [];
+        byOutcome[o.outcome].push(o.value);
+      }
+
+      const outcomes = Object.keys(byOutcome);
+      if (outcomes.length < 2) continue;
+
+      // Market consensus: average odds per outcome across all bookmakers → devig
+      const avgOdds = outcomes.map(
+        (o) => byOutcome[o].reduce((a, b) => a + b, 0) / byOutcome[o].length,
+      );
+      const consensusProbs = devig(avgOdds);
+
       const bestByOutcome = this.findBestOdds(odds);
-      const noVigProbs = devig(Object.values(bestByOutcome).map((o) => o.value));
-      const outcomes = Object.keys(bestByOutcome);
 
       for (let i = 0; i < outcomes.length; i++) {
+        const outcome = outcomes[i];
         const pred = await this.analyzeOutcome(
           match,
           market,
-          outcomes[i],
-          bestByOutcome[outcomes[i]],
-          probabilityMap[outcomes[i]] ?? noVigProbs[i],
+          outcome,
+          bestByOutcome[outcome],
+          consensusProbs[i],
         );
         if (pred) newPredictions.push(pred);
       }
@@ -170,8 +164,8 @@ export class PredictionsService {
       expectedValue: pred.expectedValue,
       homeForm: 'N/A',
       awayForm: 'N/A',
-      homeAvgGoals: POISSON_HOME_AVG,
-      awayAvgGoals: POISSON_AWAY_AVG,
+      homeAvgGoals: null,
+      awayAvgGoals: null,
     });
 
     if (!aiResult) return pred;
