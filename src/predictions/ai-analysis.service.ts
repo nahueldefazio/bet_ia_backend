@@ -33,7 +33,7 @@ export class AiAnalysisService {
   private readonly openai?: OpenAI;
 
   constructor(private readonly config: ConfigService) {
-    this.provider = this.config.get<string>('AI_PROVIDER', 'anthropic');
+    this.provider = this.config.get<string>('AI_PROVIDER', 'anthropic').toLowerCase();
 
     if (this.provider === 'anthropic') {
       const key = this.config.get<string>('ANTHROPIC_API_KEY');

@@ -29,7 +29,7 @@ export class SportsService {
 
     const sportsEnv = this.config.get<string>('TRACKED_SPORTS', '');
     this.trackedSports = sportsEnv
-      ? sportsEnv.split(',').map((s) => s.trim()).filter(Boolean)
+      ? sportsEnv.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
       : TRACKED_SPORTS_DEFAULT;
   }
 
