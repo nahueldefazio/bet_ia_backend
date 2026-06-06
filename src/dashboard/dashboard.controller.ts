@@ -1,11 +1,13 @@
 import { Controller, Get, Post, Param, Query, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
 import { PredictionsService } from '../predictions/predictions.service';
+import { EloService } from '../elo/elo.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('api')
 export class DashboardController {
   constructor(
     private readonly predictions: PredictionsService,
+    private readonly elo: EloService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -39,6 +41,12 @@ export class DashboardController {
   async triggerSync() {
     void this.predictions.runFullAnalysisCycle();
     return { message: 'Sync started' };
+  }
+
+  @Post('sync-elo')
+  async triggerEloSync() {
+    void this.elo.syncEloRatings();
+    return { message: 'Elo ratings sync started — may take ~30s' };
   }
 
   @Post('analyze/:id')

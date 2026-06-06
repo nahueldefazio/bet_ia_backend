@@ -88,3 +88,23 @@ export function confidenceLevel(ev: number, trueProbability: number): 'LOW' | 'M
   if (ev >= 0.07 && trueProbability >= 0.4) return 'MEDIUM';
   return 'LOW';
 }
+
+/**
+ * Converts Elo ratings to 1X2 probabilities for neutral-venue matches (World Cup).
+ * Draw probability scales with match closeness — tighter games draw more often.
+ */
+export function eloProbabilities(
+  eloHome: number,
+  eloAway: number,
+): { home: number; draw: number; away: number } {
+  const dr = (eloHome - eloAway) / 400;
+  const pHome = 1 / (1 + Math.pow(10, -dr));
+  const pAway = 1 - pHome;
+
+  // International football: ~22-30% draw rate; more draws in close matches
+  const closeness = 1 - Math.abs(pHome - 0.5) * 2;
+  const drawProb = 0.22 + closeness * 0.08;
+
+  const scale = 1 - drawProb;
+  return { home: pHome * scale, draw: drawProb, away: pAway * scale };
+}

@@ -94,3 +94,10 @@ model Config {
   key   String @unique
   value String
 }
+
+model NationalTeamElo {
+  id        Int      @id @default(autoincrement())
+  teamName  String   @unique
+  eloRating Int
+  updatedAt DateTime @updatedAt
+}

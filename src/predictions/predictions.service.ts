@@ -4,11 +4,15 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { SportsService } from '../sports/sports.service';
 import { AiAnalysisService } from './ai-analysis.service';
+import { FootballStatsService } from '../football-stats/football-stats.service';
+import { EloService } from '../elo/elo.service';
 import {
   calcExpectedValue,
   impliedProbability,
   devig,
   confidenceLevel,
+  poissonMatchProbabilities,
+  eloProbabilities,
 } from './ev-calculator';
 import { Match, Odd, Prediction } from '@prisma/client';
 
@@ -28,6 +32,9 @@ export class PredictionsService {
   private readonly logger = new Logger(PredictionsService.name);
   private readonly evThreshold: number;
   private readonly minConfidence: string;
+  private readonly minOdd: number;
+  private readonly maxOdd: number;
+  private readonly minBookmakers: number;
   private readonly alertHandlers: ((alerts: ValueBetAlert[]) => void)[] = [];
 
   constructor(
@@ -35,9 +42,14 @@ export class PredictionsService {
     private readonly sports: SportsService,
     private readonly ai: AiAnalysisService,
     private readonly config: ConfigService,
+    private readonly footballStats: FootballStatsService,
+    private readonly elo: EloService,
   ) {
     this.evThreshold = Number.parseFloat(this.config.get('EV_THRESHOLD', '0.05'));
     this.minConfidence = this.config.get('MIN_CONFIDENCE', 'MEDIUM');
+    this.minOdd = Number.parseFloat(this.config.get('MIN_ODD', '1.20'));
+    this.maxOdd = Number.parseFloat(this.config.get('MAX_ODD', '10.00'));
+    this.minBookmakers = Number.parseInt(this.config.get('MIN_BOOKMAKERS', '3'), 10);
   }
 
   onAlert(handler: (alerts: ValueBetAlert[]) => void) {
@@ -72,11 +84,15 @@ export class PredictionsService {
 
     await this.prisma.prediction.deleteMany({ where: { matchId: match.id } });
 
+    const [homeStats, awayStats] = await Promise.all([
+      this.footballStats.getTeamStats(match.homeTeam),
+      this.footballStats.getTeamStats(match.awayTeam),
+    ]);
+
     const markets = this.groupOddsByMarket(match.odds);
     const newPredictions: Prediction[] = [];
 
     for (const [market, odds] of Object.entries(markets)) {
-      // Group all bookmaker odds by outcome
       const byOutcome: Record<string, number[]> = {};
       for (const o of odds) {
         if (!byOutcome[o.outcome]) byOutcome[o.outcome] = [];
@@ -86,22 +102,56 @@ export class PredictionsService {
       const outcomes = Object.keys(byOutcome);
       if (outcomes.length < 2) continue;
 
-      // Market consensus: average odds per outcome across all bookmakers → devig
+      // Require minimum number of bookmakers for a reliable devig
+      const minBooks = Math.min(...outcomes.map((o) => byOutcome[o].length));
+      if (minBooks < this.minBookmakers) continue;
+
       const avgOdds = outcomes.map(
         (o) => byOutcome[o].reduce((a, b) => a + b, 0) / byOutcome[o].length,
       );
       const consensusProbs = devig(avgOdds);
 
+      // World Cup: blend devig with Elo ratings (computed from 150y of international results)
+      // Other leagues: blend devig with Poisson when team stats are available
+      let blendedProbs: number[] | null = null;
+      const isWorldCup = match.league.toLowerCase().includes('world cup');
+
+      if (market === '1X2') {
+        if (isWorldCup) {
+          const [homeElo, awayElo] = await Promise.all([
+            this.elo.getTeamElo(match.homeTeam),
+            this.elo.getTeamElo(match.awayTeam),
+          ]);
+          if (homeElo && awayElo) {
+            const ep = eloProbabilities(homeElo.eloRating, awayElo.eloRating);
+            const eloMap: Record<string, number> = { Home: ep.home, Away: ep.away, Draw: ep.draw };
+            if (outcomes.every((o) => eloMap[o] !== undefined)) {
+              blendedProbs = outcomes.map((o, i) => 0.5 * consensusProbs[i] + 0.5 * eloMap[o]);
+              this.logger.debug(`Elo blend: ${match.homeTeam}(${homeElo.eloRating}) vs ${match.awayTeam}(${awayElo.eloRating})`);
+            }
+          }
+        } else if (homeStats != null && homeStats.avgGoalsFor > 0 && awayStats != null && awayStats.avgGoalsFor > 0) {
+          const p = poissonMatchProbabilities(
+            homeStats.avgGoalsFor, homeStats.avgGoalsAgainst,
+            awayStats.avgGoalsFor, awayStats.avgGoalsAgainst,
+          );
+          const poissonMap: Record<string, number> = { Home: p.home, Away: p.away, Draw: p.draw };
+          if (outcomes.every((o) => poissonMap[o] !== undefined)) {
+            blendedProbs = outcomes.map((o, i) => 0.5 * consensusProbs[i] + 0.5 * poissonMap[o]);
+          }
+        }
+      }
+
+      const finalProbs = blendedProbs ?? consensusProbs;
       const bestByOutcome = this.findBestOdds(odds);
 
       for (let i = 0; i < outcomes.length; i++) {
-        const outcome = outcomes[i];
         const pred = await this.analyzeOutcome(
           match,
           market,
-          outcome,
-          bestByOutcome[outcome],
-          consensusProbs[i],
+          outcomes[i],
+          bestByOutcome[outcomes[i]],
+          finalProbs[i],
         );
         if (pred) newPredictions.push(pred);
       }
@@ -117,6 +167,8 @@ export class PredictionsService {
     best: { value: number; bookmaker: string },
     trueProbability: number,
   ): Promise<Prediction | null> {
+    if (best.value < this.minOdd || best.value > this.maxOdd) return null;
+
     const implied = impliedProbability(best.value);
     const ev = calcExpectedValue(trueProbability, best.value);
 
